@@ -383,8 +383,10 @@ export default function HomeScreen() {
         return;
       }
 
-      if (!photo.file || photo.file.size === 0) {
+      // On web, verify the File object is present and non-empty
+      if (Platform.OS === "web" && (!photo.file || photo.file.size === 0)) {
         showToast("Error", "Camera returned an empty file. Please try again.");
+        setIsSendingImage(false);
         return;
       }
 

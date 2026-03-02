@@ -1,4 +1,4 @@
-const ONESIGNAL_APP_ID = process.env.EXPO_PUBLIC_ONESIGNAL_APP_ID ?? "";
+const DEFAULT_ONESIGNAL_APP_ID = process.env.EXPO_PUBLIC_ONESIGNAL_APP_ID ?? "";
 const SDK_URL = "https://cdn.onesignal.com/sdks/web/v16/OneSignalSDK.page.js";
 
 declare global {
@@ -7,6 +7,9 @@ declare global {
     OneSignalDeferred?: Array<(os: any) => void | Promise<void>>;
   }
 }
+
+/** Resolved app ID — set once during initializeOneSignal */
+let resolvedAppId: string = DEFAULT_ONESIGNAL_APP_ID;
 
 let sdkLoadPromise: Promise<void> | null = null;
 
@@ -49,8 +52,16 @@ function loadSDK(): Promise<void> {
 
 // Initialize OneSignal
 
-export async function initializeOneSignal(_appId?: string): Promise<void> {
+export async function initializeOneSignal(appId?: string): Promise<void> {
   if (typeof window === "undefined") return;
+
+  // Use the explicitly passed appId, falling back to the env variable
+  resolvedAppId = appId || DEFAULT_ONESIGNAL_APP_ID;
+
+  if (!resolvedAppId) {
+    console.warn("OneSignal: No app ID provided — skipping init.");
+    return;
+  }
 
   try {
     await loadSDK();
@@ -60,7 +71,7 @@ export async function initializeOneSignal(_appId?: string): Promise<void> {
     window.OneSignalDeferred.push(async (OneSignal: any) => {
       try {
         await OneSignal.init({
-          appId: ONESIGNAL_APP_ID,
+          appId: resolvedAppId,
           serviceWorkerParam: { scope: "/" },
           serviceWorkerPath: "/OneSignalSDKWorker.js",
           allowLocalhostAsSecureOrigin: true,
