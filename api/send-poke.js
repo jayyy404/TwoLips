@@ -22,23 +22,37 @@ module.exports = async (req, res) => {
   const flower = FLOWER_MAP[animationType] || { name: "flower", emoji: "🌸" };
 
   try {
+    const payload = {
+      app_id: process.env.ONESIGNAL_APP_ID,
+      include_aliases: { external_id: [partnerUid] },
+      target_channel: "push",
+      headings: { en: `${flower.name} ${flower.emoji}` },
+      contents: { en: `Did the ${flower.name} bloom? ${flower.emoji}` },
+      url: "https://twolips.vercel.app",
+    };
+
+    console.log(
+      "[send-poke] Sending to:",
+      partnerUid,
+      "payload:",
+      JSON.stringify(payload),
+    );
+
     const response = await fetch("https://api.onesignal.com/notifications", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
         Authorization: `Key ${process.env.ONESIGNAL_API_KEY}`,
       },
-      body: JSON.stringify({
-        app_id: process.env.ONESIGNAL_APP_ID,
-        include_aliases: { external_id: [partnerUid] },
-        target_channel: "push",
-        headings: { en: `${flower.name} ${flower.emoji}` },
-        contents: { en: `Did the ${flower.name} bloom? ${flower.emoji}` },
-        url: "https://twolips.vercel.app",
-      }),
+      body: JSON.stringify(payload),
     });
 
     const data = await response.json();
+    console.log(
+      "[send-poke] OneSignal response:",
+      response.status,
+      JSON.stringify(data),
+    );
 
     if (!response.ok) {
       return res

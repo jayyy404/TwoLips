@@ -13,6 +13,9 @@ let resolvedAppId: string = DEFAULT_ONESIGNAL_APP_ID;
 
 let sdkLoadPromise: Promise<void> | null = null;
 
+/** Tracks whether init() completed successfully */
+let initCompleted = false;
+
 /** Resolves once OneSignal.init() has completed */
 let initResolve: (() => void) | null = null;
 const initPromise = new Promise<void>((r) => {
@@ -65,12 +68,18 @@ export async function initializeOneSignal(appId?: string): Promise<void> {
   resolvedAppId = appId || DEFAULT_ONESIGNAL_APP_ID;
 
   if (!resolvedAppId) {
-    console.warn("OneSignal: No app ID provided — skipping init.");
+    console.warn("[OneSignal] No app ID provided — skipping init.");
     return;
   }
 
+  console.log(
+    "[OneSignal] Starting initialization with appId:",
+    resolvedAppId.substring(0, 8) + "...",
+  );
+
   try {
     await loadSDK();
+    console.log("[OneSignal] SDK script loaded successfully");
 
     // Push init onto the deferred queue
     window.OneSignalDeferred = window.OneSignalDeferred || [];
@@ -82,9 +91,28 @@ export async function initializeOneSignal(appId?: string): Promise<void> {
           serviceWorkerPath: "/OneSignalSDKWorker.js",
           allowLocalhostAsSecureOrigin: true,
         });
+        initCompleted = true;
+        console.log("[OneSignal] init() completed successfully");
+
+        // Log current permission & subscription state for debugging
+        try {
+          const permission = OneSignal.Notifications?.permission;
+          const subId = OneSignal.User?.PushSubscription?.id;
+          console.log(
+            "[OneSignal] Permission:",
+            permission,
+            "| Subscription ID:",
+            subId || "none",
+          );
+        } catch (_) {
+          /* ignore */
+        }
       } catch (e: any) {
-        if (!e?.message?.includes("already")) {
-          console.error("OneSignal init error:", e);
+        if (e?.message?.includes("already")) {
+          initCompleted = true;
+          console.log("[OneSignal] Already initialized (OK)");
+        } else {
+          console.error("[OneSignal] init error:", e);
         }
       } finally {
         // Signal that init is done (even if it threw "already initialized")
@@ -92,9 +120,16 @@ export async function initializeOneSignal(appId?: string): Promise<void> {
       }
     });
 
-    await new Promise((r) => setTimeout(r, 1000));
+    // Wait up to 5s for init to actually complete
+    await Promise.race([initPromise, new Promise((r) => setTimeout(r, 5000))]);
+
+    if (!initCompleted) {
+      console.warn(
+        "[OneSignal] init() did not complete within 5s — may still be loading",
+      );
+    }
   } catch (e) {
-    console.error("OneSignal initialization failed:", e);
+    console.error("[OneSignal] Initialization failed:", e);
   }
 }
 
@@ -103,6 +138,8 @@ export async function initializeOneSignal(appId?: string): Promise<void> {
 export async function loginOneSignal(userId: string): Promise<void> {
   if (typeof window === "undefined") return;
 
+  console.log("[OneSignal] loginOneSignal called for user:", userId);
+
   // Wait until init() has actually completed — not just until the SDK script
   // is loaded.  Calling login() before init finishes causes an internal
   // "_i is undefined" crash inside the OneSignal v16 LoginManager.
@@ -110,21 +147,31 @@ export async function loginOneSignal(userId: string): Promise<void> {
     await Promise.race([
       initPromise,
       new Promise((_, reject) =>
-        setTimeout(() => reject(new Error("OneSignal init timed out")), 10000),
+        setTimeout(() => reject(new Error("OneSignal init timed out")), 15000),
       ),
     ]);
   } catch (e) {
     console.warn(
-      "OneSignal: init did not complete in time, attempting login anyway",
+      "[OneSignal] init did not complete in time, attempting login anyway",
       e,
     );
   }
 
-  const OS = window.OneSignal;
+  // Retry up to 3 times — SDK may still be initializing internally
+  for (let attempt = 1; attempt <= 3; attempt++) {
+    const OS = window.OneSignal;
 
-  if (OS?.login) {
+    if (!OS?.login) {
+      console.warn(
+        `[OneSignal] SDK not ready (attempt ${attempt}/3), waiting 2s...`,
+      );
+      await new Promise((r) => setTimeout(r, 2000));
+      continue;
+    }
+
     try {
       await OS.login(userId);
+      console.log("[OneSignal] login() succeeded for:", userId);
 
       // optIn after login to create push subscription
       if (
@@ -134,15 +181,34 @@ export async function loginOneSignal(userId: string): Promise<void> {
         await new Promise((r) => setTimeout(r, 500));
         if (OS.User?.PushSubscription) {
           await OS.User.PushSubscription.optIn();
+          console.log("[OneSignal] PushSubscription.optIn() called");
         }
       }
-    } catch (e) {
-      console.error("OneSignal login failed:", e);
+
+      // Log subscription state after login
+      try {
+        const subId = OS.User?.PushSubscription?.id;
+        const token = OS.User?.PushSubscription?.token;
+        console.log(
+          "[OneSignal] After login — Sub ID:",
+          subId || "none",
+          "| Token:",
+          token ? "present" : "none",
+        );
+      } catch (_) {
+        /* ignore */
+      }
+
+      return;
+    } catch (e: any) {
+      console.error(`[OneSignal] login failed (attempt ${attempt}/3):`, e);
+      if (attempt < 3) {
+        await new Promise((r) => setTimeout(r, 2000));
+      }
     }
-    return;
   }
 
-  console.warn("OneSignal: SDK not available after init — login skipped");
+  console.error("[OneSignal] login failed after 3 attempts for user:", userId);
 }
 
 // Request notification permission (must be in click handler context)

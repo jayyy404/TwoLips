@@ -2,26 +2,26 @@ import { LinearGradient } from "expo-linear-gradient";
 import LottieView from "lottie-react-native";
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
-  Dimensions,
-  Modal,
-  Platform,
-  Pressable,
-  StyleSheet,
-  Text,
-  View,
+    Dimensions,
+    Modal,
+    Platform,
+    Pressable,
+    StyleSheet,
+    Text,
+    View,
 } from "react-native";
 import { Gesture, GestureDetector } from "react-native-gesture-handler";
 
 import { client, databases, storage } from "../config/appwrite";
 import {
-  APPWRITE_ENDPOINT,
-  APPWRITE_PROJECT_ID,
-  BUCKET_TEMPORARY_IMAGES,
-  COLLECTION_GARDEN,
-  COLLECTION_TEMPORARY_IMAGES,
-  DATABASE_ID,
-  GARDEN_DOC_ID,
-  ONESIGNAL_APP_ID,
+    APPWRITE_ENDPOINT,
+    APPWRITE_PROJECT_ID,
+    BUCKET_TEMPORARY_IMAGES,
+    COLLECTION_GARDEN,
+    COLLECTION_TEMPORARY_IMAGES,
+    DATABASE_ID,
+    GARDEN_DOC_ID,
+    ONESIGNAL_APP_ID,
 } from "../config/constant";
 import { COLORS } from "../config/theme";
 import { useAuth } from "../context/AuthContent";
@@ -353,6 +353,12 @@ export default function HomeScreen() {
   // Send poke notification via Vercel API
   const sendPokeNotification = async () => {
     try {
+      console.log(
+        "[Poke] Sending notification for:",
+        user!.$id,
+        "animation:",
+        selectedAnimation,
+      );
       const response = await fetch("/api/send-poke", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -362,11 +368,14 @@ export default function HomeScreen() {
         }),
       });
 
+      const data = await response.json();
       if (response.ok) {
-        await response.json();
+        console.log("[Poke] Notification sent successfully:", data);
+      } else {
+        console.error("[Poke] API error:", response.status, data);
       }
     } catch (e) {
-      console.error("Error sending poke notification:", e);
+      console.error("[Poke] Error sending poke notification:", e);
     }
   };
 
@@ -420,13 +429,20 @@ export default function HomeScreen() {
   // Send snap notification via Vercel API
   const sendSnapNotification = async () => {
     try {
-      await fetch("/api/send-snap", {
+      console.log("[Snap] Sending notification for:", user!.$id);
+      const response = await fetch("/api/send-snap", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ senderUid: user!.$id }),
       });
+      const data = await response.json();
+      if (response.ok) {
+        console.log("[Snap] Notification sent successfully:", data);
+      } else {
+        console.error("[Snap] API error:", response.status, data);
+      }
     } catch (e) {
-      console.error("Error sending snap notification:", e);
+      console.error("[Snap] Error sending snap notification:", e);
     }
   };
 
